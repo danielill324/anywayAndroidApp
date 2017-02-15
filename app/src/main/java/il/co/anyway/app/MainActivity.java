@@ -1,17 +1,25 @@
 package il.co.anyway.app;
 
 import android.app.AlertDialog;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.location.Location;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.preference.PreferenceManager;
+import android.speech.tts.TextToSpeech;
 import android.support.v4.app.FragmentManager;
 import android.support.v4.app.FragmentTransaction;
+import android.support.v4.app.NotificationCompat;
+import android.support.v4.graphics.ColorUtils;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.Menu;
@@ -31,6 +39,7 @@ import com.androidmapsextensions.GoogleMap.OnMarkerClickListener;
 import com.androidmapsextensions.Marker;
 import com.androidmapsextensions.MarkerOptions;
 import com.androidmapsextensions.OnMapReadyCallback;
+import com.androidmapsextensions.PolygonOptions;
 import com.androidmapsextensions.SupportMapFragment;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
@@ -49,10 +58,19 @@ import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.handshake.ServerHandshake;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 import il.co.anyway.app.dialogs.AccidentsDialogs;
 import il.co.anyway.app.dialogs.ConfirmDiscussionCreateDialogFragment;
@@ -63,7 +81,6 @@ import il.co.anyway.app.models.AccidentCluster;
 import il.co.anyway.app.models.Discussion;
 import il.co.anyway.app.singletons.AnywayRequestQueue;
 import il.co.anyway.app.singletons.MarkersManager;
-
 public class MainActivity extends AppCompatActivity
         implements
         OnInfoWindowClickListener,
@@ -74,10 +91,11 @@ public class MainActivity extends AppCompatActivity
         OnMarkerClickListener,
         GoogleApiClient.ConnectionCallbacks,
         GoogleApiClient.OnConnectionFailedListener,
-        LocationListener {
+        LocationListener
+        {
 
     private static final LatLng START_LOCATION = new LatLng(31.774511, 35.011642);
-    private static final int START_ZOOM_LEVEL = 7;
+    private static final int START_ZOOM_LEVEL = 14;
     private static final int MINIMUM_ZOOM_LEVEL_TO_SHOW_ACCIDENTS = 16;
     private static final String TUTORIAL_SHOWED_KEY = "il.co.anyway.app.TUTORIAL_SHOWED";
 
@@ -85,7 +103,6 @@ public class MainActivity extends AppCompatActivity
     private GoogleMap mMap;
     private FragmentManager mFragmentManager;
     private SupportMapFragment mMapFragment;
-
     private boolean mNewInstance,
             mMapIsInClusterMode,
             mDoubleBackToExitPressedOnce,
@@ -93,6 +110,7 @@ public class MainActivity extends AppCompatActivity
             mShowedDialogAboutInternetConnection,
             mShowedTutorialBefore;
 
+    private boolean mInDanger = false;
     private List<AccidentCluster> mLastAccidentsClusters = null;
 
     private SharedPreferences.OnSharedPreferenceChangeListener mSharedPrefListener;
@@ -103,7 +121,13 @@ public class MainActivity extends AppCompatActivity
     private LocationRequest mLocationRequest;
     private LocationSettingsRequest mLocationSettingsRequest;
     private boolean mGpsDialogNeverShowed;
-
+    private final String WS_URI="ws://anyway-server-danielill324.c9users.io:8081";
+    public WebSocketClient mWebSocketClient;
+    public  com.androidmapsextensions.Polygon poly;
+    public  final double alpha = 0.0013;
+   public final double beta= 0.0018;
+    public int i=0;
+    private TextToSpeech tts;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -156,9 +180,49 @@ public class MainActivity extends AppCompatActivity
         // get tutorial show status from shared preferences to make sure tutorial will only open once
         SharedPreferences sp = PreferenceManager.getDefaultSharedPreferences(this);
         mShowedTutorialBefore = sp.getBoolean(TUTORIAL_SHOWED_KEY, false);
+        //set tts Listner and init function
+        tts = new TextToSpeech(this, new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if (status == TextToSpeech.SUCCESS) {
+                    int result = tts.setLanguage(Locale.US);
+                    if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                        Log.e("TTS", "This Language is not supported");
+                    }
+                    speak("Hello");
 
+                } else {
+                    Log.e("TTS", "Initilization Failed!");
+                }
+            }
+        });
+        /** try to do connect of websoket**/
+
+        try {
+            connectWebSocket();
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
     }
 
+            /**
+             *
+             * @param text, convert the text to audio
+             */
+            private void speak(String text){
+                Log.i("speak", "entered to speak");
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null);
+                }else{
+                    tts.speak(text, TextToSpeech.QUEUE_FLUSH, null);
+                }
+            }
+
+            /**
+             *
+             */
     @Override
     protected void onDestroy() {
         super.onDestroy();
@@ -166,6 +230,19 @@ public class MainActivity extends AppCompatActivity
         // remove shared preferences listener
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
         prefs.unregisterOnSharedPreferenceChangeListener(mSharedPrefListener);
+        //close the tts
+        if (tts != null) {
+            tts.stop();
+            tts.shutdown();
+        }
+       if(mWebSocketClient.getConnection().isOpen())
+        {
+            //mWebSocketClient.close();
+            mWebSocketClient.onClose(1000,"onDestroy", true);
+
+        }
+
+
     }
 
     @Override
@@ -199,24 +276,21 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     protected void onStop() {
-
         mGoogleApiClient.disconnect();
-
         // unregister activity updates from MarkersManager
         MarkersManager.getInstance().unregisterListenerActivity();
-
         super.onStop();
+    }
+
+    @Override
+    protected void onRestart() {
+        super.onRestart();
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        // Within {@code onPause()}, we pause location updates, but leave the
-        // connection to GoogleApiClient intact.  Here, we resume receiving
-        // location updates if the user has requested them.
-        if (mGoogleApiClient.isConnected()) {
-            startLocationUpdates();
-        }
+
     }
 
     @Override
@@ -228,6 +302,9 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
+            /**
+             *
+             */
     private void setUpMapIfNeeded() {
         mFragmentManager = getSupportFragmentManager();
         mMapFragment = (SupportMapFragment) mFragmentManager.findFragmentById(R.id.map_container);
@@ -243,7 +320,6 @@ public class MainActivity extends AppCompatActivity
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
-
         mMap = googleMap;
 
         // set map to start location if previous instance exist
@@ -300,6 +376,7 @@ public class MainActivity extends AppCompatActivity
 
         // show app tutorial (if it wasn't showed before)
         showTutorialIfNeeded();
+
     }
 
     @Override
@@ -423,6 +500,10 @@ public class MainActivity extends AppCompatActivity
         });
     }
 
+            /**
+             * update the map when the user connect
+             * @param bundle
+             */
     @Override
     public void onConnected(Bundle bundle) {
         // If the initial location was never previously requested, we use
@@ -441,20 +522,38 @@ public class MainActivity extends AppCompatActivity
 
     }
 
+            /**
+             *
+             *
+             * @param location get tcurrent ocation
+             *                 send to server the new location
+             */
     @Override
     public void onLocationChanged(Location location) {
         mLocation = location;
-
         if (location == null)
             return;
+        try {
+            if (mWebSocketClient.getConnection().isOpen()) {
+                Log.d("location", String.valueOf(mWebSocketClient.getConnection().isOpen()));
+                mWebSocketClient.send("location "+location.getLatitude() + "," + location.getLongitude());
+            }
+        }
+        catch (Exception e)
+        {
+            Log.i("location", "catch");
+            connectWebSocket();
+            e.printStackTrace();
+        }
 
         if (!mSentUserLocation) {
             AnywayRequestQueue.getInstance(this)
-                    .sendUserAndSearchedLocation(
-                            location.getLatitude(), location.getLongitude(),
+                    .sendUserAndSearchedLocation(location.getLatitude(), location.getLongitude(),
                             AnywayRequestQueue.HIGHLIGHT_TYPE_USER_GPS
                     );
+
             mSentUserLocation = true;
+
         }
 
         if (mPositionMarker == null) {
@@ -483,6 +582,11 @@ public class MainActivity extends AppCompatActivity
         return true;
     }
 
+            /**
+             *
+             * @param item set the appliction by the user settungs
+             * @return
+             */
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
@@ -509,7 +613,7 @@ public class MainActivity extends AppCompatActivity
 
             Intent emailIntent = new Intent(Intent.ACTION_SENDTO, Uri.fromParts(
                     "mailto", "samuel.regev@gmail.com", null));
-            emailIntent.putExtra(Intent.EXTRA_SUBJECT, "בעייה באפליקציית Anyway");
+            emailIntent.putExtra(Intent.EXTRA_SUBJECT, "problem in anyway appliction");
             emailIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(Intent.createChooser(emailIntent, getString(R.string.action_report_bug)));
 
@@ -518,9 +622,15 @@ public class MainActivity extends AppCompatActivity
             showAboutInfoDialog();
         }
 
+
         return super.onOptionsItemSelected(item);
     }
 
+            /**
+             *
+             * @param marker zoom on and show detaild on the accident
+             * @return
+             */
     @Override
     public boolean onMarkerClick(Marker marker) {
 
@@ -558,6 +668,10 @@ public class MainActivity extends AppCompatActivity
         return false;
     }
 
+            /**
+             *
+             * @param marker click on info botton marker show details on the accident
+             */
     @Override
     public void onInfoWindowClick(Marker marker) {
 
@@ -570,6 +684,11 @@ public class MainActivity extends AppCompatActivity
 
     }
 
+            /**
+             *
+             * @param latLng - the positopn of the click in, is the user press long click on the map he can add new discussion
+             *
+             */
     @Override
     public void onMapLongClick(LatLng latLng) {
 
@@ -582,9 +701,14 @@ public class MainActivity extends AppCompatActivity
 
     }
 
+            /**
+             *
+             * @param cameraPosition the position to move to
+             *                       the position is LatLng of ne and se
+             *                       the function send to the server this new posion
+             */
     @Override
     public void onCameraChange(CameraPosition cameraPosition) {
-
         int zoomLevel = (int) mMap.getCameraPosition().zoom;
 
         if (zoomLevel < MINIMUM_ZOOM_LEVEL_TO_SHOW_ACCIDENTS && !mMapIsInClusterMode) {
@@ -603,7 +727,29 @@ public class MainActivity extends AppCompatActivity
         }
 
         getMarkersFromServer();
+        /***/
+
+        LatLngBounds bounds = mMap.getProjection().getVisibleRegion().latLngBounds;
+        LatLng ne = bounds.northeast;
+        LatLng sw = bounds.southwest;
+
+
+        /****/
+        try {
+            if (mWebSocketClient.getConnection().isOpen()) {
+                Log.i("Websocket", String.valueOf(mWebSocketClient.getConnection().isOpen())+"Camera");
+                mWebSocketClient.send(ne+","+sw);
+                Log.i("onCamera",ne.toString()+" "+ sw.toString());
+            } else {
+                mWebSocketClient.connect();
+            }
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
     }
+
 
     /**
      * check if user opened the intent from a link shared with him, like: http://www.anyway.co.il/...parameters
@@ -723,6 +869,7 @@ public class MainActivity extends AppCompatActivity
                 .apply();
 
         setMapToLocation(new LatLng(latitude, longitude), zoom, false);
+
     }
 
     /**
@@ -838,6 +985,8 @@ public class MainActivity extends AppCompatActivity
      */
     public void addAccidentToMap(Accident a) {
 
+        Log.e(LOG_TAG, "adding "+a);
+        System.out.println("adding "+a);
         // if map is in cluster mode, do not add accident marker
         if (mMapIsInClusterMode)
             return;
@@ -848,6 +997,7 @@ public class MainActivity extends AppCompatActivity
                 .icon(BitmapDescriptorFactory.fromResource(Utility.getIconForMarker(a.getSeverity(), a.getSubType())))
                 .position(a.getLocation()))
                 .setData(a);
+        System.out.println("added");
 
         a.setMarkerAddedToMap(true);
     }
@@ -915,7 +1065,6 @@ public class MainActivity extends AppCompatActivity
             super.onBackPressed();
             return;
         }
-
         mDoubleBackToExitPressedOnce = true;
         Toast.makeText(this, getString(R.string.press_back_again_to_exit), Toast.LENGTH_SHORT).show();
 
@@ -945,6 +1094,7 @@ public class MainActivity extends AppCompatActivity
 
         mPositionMarker = null;
         onLocationChanged(mLocation);
+
     }
 
     /**
@@ -981,4 +1131,170 @@ public class MainActivity extends AppCompatActivity
             startActivity(new Intent(this, TutorialActivity.class));
         }
     }
-}
+
+
+            /**
+             * this function handle  all the issues of the websocket connection
+             */
+    private void connectWebSocket() {
+        URI uri;
+        try {
+            uri = new URI(WS_URI);
+        } catch (URISyntaxException e) {
+
+            Toast.makeText(getApplicationContext(),"uri failed", Toast.LENGTH_SHORT).show();
+            e.printStackTrace();
+            return;
+        }
+        mWebSocketClient = new WebSocketClient(uri) {
+            @Override
+            /**
+             * create connection with the server
+             */
+            public void onOpen(ServerHandshake handshakedata) {
+                Log.i("Websocket", "Opened"+ handshakedata.getHttpStatusMessage());
+                mWebSocketClient.send("Hello from " + Build.MANUFACTURER + " " + Build.MODEL);
+
+            }
+
+            @Override
+            /**
+             * the function received a message from the server, and create a runnable.
+             * the function react due to the message context
+             */
+            public void onMessage(String s) {
+                final String message = s;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        Log.i("Websocket", "got message: " + message);
+                        if(message.equals("2") || message.equals("3"))
+
+                        {
+                            if( message.equals("2")) {
+                                if (!mInDanger) {
+                                    addNotification();
+                                    mInDanger = true;
+                                    try {
+                                        speak("be carefull");
+                                    } catch (Exception e) {
+                                        Log.i("ring", "problem");
+
+                                    }
+                                }
+                            }
+                            else //message of 3 arrived
+                            {
+                                if (mInDanger) { //was in not dangerous area
+                                    mInDanger = false;
+                                    try {
+                                        speak("out of danger");
+                                    } catch (Exception e) {
+                                        Log.i("ring", "problem");
+
+                                    }
+                                }
+
+                            }
+                        }
+                        else
+                        try {
+                            clearMap();
+                            JSONArray jsonArr = new JSONArray(message);
+
+                            for (int i = 0; i < jsonArr.length(); i++)
+                            {
+                                JSONObject jsonObj = jsonArr.getJSONObject(i);
+
+                                Log.i("json", String.valueOf(jsonObj.getDouble("lat")));
+                                getColor(jsonObj.getInt("color"), jsonObj.getDouble("lat"), jsonObj.getDouble("lng"));
+                            }
+
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+
+                    }
+                });
+            }
+
+            @Override
+            /**
+             * closing the connection with the server, send  the server close message
+             * if the reason of calling that function is not from on destroy the function will try to reconnect
+             */
+            public void onClose(int code, String reason, boolean remote) {
+                mWebSocketClient.send("closing" + reason);
+                mWebSocketClient.getConnection().close(code, reason);
+
+                Log.i("Websocket", "Closed " + reason);
+                clearMap();
+                try {
+                    if (reason != "onDestroy") {
+                        mWebSocketClient.connect();
+                    }
+                }
+                catch (Exception e)
+                {
+                    Toast.makeText(getApplicationContext(),"connaction failed", Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onError(Exception ex) {
+                Log.i("Websocket", "Error \n" + ex);
+            }
+        };
+        mWebSocketClient.connect();
+    }
+
+            /**
+             *
+             * @param H - hue of the square color
+             * @param lat - latitude of the left bottom corner of the square
+             * @param lng - longitude  of the right bottom  of the square
+             *            the function draw a polygon on the map and color it according to the H parameter
+             */
+    private void getColor(int H, double lat, double lng)
+    {
+        float [] HSL={0,0,0};
+        HSL[0] = (float) (H);
+        HSL[1] = (float) (1);
+        HSL[2] = (float) (0.5);
+        int rgb = ColorUtils.HSLToColor(HSL);
+        int r = Color.red(rgb);
+        int g = Color.green(rgb);
+        int b = Color.blue(rgb);
+        poly = mMap.addPolygon(new PolygonOptions()
+                .add(new LatLng(lat, lng), new LatLng(lat, lng+beta), new LatLng(lat+alpha, lng+beta), new LatLng(lat+alpha, lng))
+                .strokeWidth(0).
+                 fillColor(Color.argb(80, r ,g ,b)));
+
+
+
+    }
+
+            /**
+             * function that bulids the notifications
+             * logo= awLsixty size: 64*64 px
+             * intent that connect the notification to main actitivity
+             * build the notification by systemService
+             */
+            private void addNotification() {
+                NotificationCompat.Builder builder =
+                        new NotificationCompat.Builder(this)
+                                .setSmallIcon(R.drawable.awlsixty)
+                                .setContentTitle("Cearfull")
+                                .setContentText("risk area");
+
+                Intent notificationIntent = new Intent(this, MainActivity.class);
+                PendingIntent contentIntent = PendingIntent.getActivity(this, 0, notificationIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT);
+                builder.setContentIntent(contentIntent);
+
+                // Add anywar notification
+                NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                manager.notify(0, builder.build());
+            }
+
+        }
