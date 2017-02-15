@@ -30,7 +30,7 @@ import il.co.anyway.app.models.Discussion;
 // fetching accidents from Anyway servers
 public class AnywayRequestQueue {
 
-    public final static String ANYWAY_BASE_URL = "http://www.anyway.co.il/";
+    public final static String ANYWAY_BASE_URL = "https://www.anyway.co.il/";
     public final static String ANYWAY_MARKERS_BASE_URL = ANYWAY_BASE_URL + "markers?";
     public final static String ANYWAY_DISCUSSION_POST_URL = ANYWAY_BASE_URL + "discussion";
     public final static String ANYWAY_HIGHLIGHT_POINTS = ANYWAY_BASE_URL + "highlightpoints";

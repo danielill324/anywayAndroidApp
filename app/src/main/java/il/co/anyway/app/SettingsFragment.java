@@ -66,7 +66,7 @@ public class SettingsFragment extends PreferenceFragment {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+        addPreferencesFromResource(R.xml.preferencescreen);
         // Load the preferences from an XML resource
         // Add 'general' preferences.
         addPreferencesFromResource(R.xml.pref_general);

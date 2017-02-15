@@ -28,8 +28,8 @@ public class DatePreference extends DialogPreference {
     public DatePreference(Context context, AttributeSet attrs) {
         super(context, attrs);
 
-        setPositiveButtonText("אישור");
-        setNegativeButtonText("ביטול");
+        setPositiveButtonText("ok");
+        setNegativeButtonText("cancel");
     }
 
     public static int getYear(String dateval) {

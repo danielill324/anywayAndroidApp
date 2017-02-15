@@ -29,7 +29,7 @@ import il.co.anyway.app.models.AccidentCluster;
 public class FetchClusteredAccidents {
 
     private final static String LOG_TAG = FetchClusteredAccidents.class.getSimpleName();
-    private final static String ANYWAY_CLUSTER_URL = "http://www.anyway.co.il/clusters";
+    private final static String ANYWAY_CLUSTER_URL = "https://www.anyway.co.il/clusters";
 
     private static FetchAsync currentRunningTask = null;
 

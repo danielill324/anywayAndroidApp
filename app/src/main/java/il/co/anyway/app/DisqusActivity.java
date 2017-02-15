@@ -23,7 +23,7 @@ public class DisqusActivity extends AppCompatActivity {
     public static final String DISQUS_LOCATION = "il.co.anyway.app.DISQUS_TALK_LOCATION";
     public static final String DISQUS_NEW = "il.co.anyway.app.DISQUS_TALK_NEW";
 
-    private static final String DISCUSSION_URL = "http://www.anyway.co.il/discussion";
+    private static final String DISCUSSION_URL = "https://www.anyway.co.il/discussion";
     private final String LOG_TAG = DisqusActivity.class.getSimpleName();
 
     private WebView mWebView;

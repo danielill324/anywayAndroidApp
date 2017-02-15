@@ -73,5 +73,7 @@
     <string name="tutorial_screen_d_subtext">לחצו לחיצה ארוכה בכל נקודה במפה על מנת לפתוח דיון חדש</string>
     <string name="tutorial_screen_e_btn_text">בואו נתחיל</string>
     <string name="tutorial_screen_e_text">אנחנו מאמינים שבעזרת ידע ציבורי קיים המוצג באתר יווצרו ידע ותובנות חדשים.\nשיתוף הידע הזה יאפשר לחברה האזרחית להתארגן לפעולה אקטיבית ולהזרים הצעות, רעיונות והתראות בחזרה אל הרשויות.\nכל זה יכול להיות אפשרי עם העזרה שלכם.</string>
+    <string name="pref_header_notification">הגדרות תצוגה</string>
+    <string name="colored_Map_key">תצוגת מפה צבועה</string>
 
 </resources>

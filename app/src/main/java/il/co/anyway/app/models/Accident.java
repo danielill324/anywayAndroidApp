@@ -8,9 +8,9 @@ import java.util.Date;
 public class Accident {
 
     // accident severity
-    public static final int SEVERITY_FATAL = 1; // תאונה קטלנית
-    public static final int SEVERITY_SEVERE = 2; // קשה
-    public static final int SEVERITY_LIGHT = 3; // קלה
+    public static final int SEVERITY_FATAL = 1;
+    public static final int SEVERITY_SEVERE = 2;
+    public static final int SEVERITY_LIGHT = 3;
     public static final int SEVERITY_VARIOUS = 4;
     // accident subtype
     public static final int ACCIDENT_MULTIPLE = -10;
@@ -82,6 +82,23 @@ public class Accident {
 
     public String getTitle() {
         return title;
+    }
+
+    @Override
+    public String toString() {
+        return "Accident{" +
+                "id=" + id +
+                ", title='" + title + '\'' +
+                ", description='" + description + '\'' +
+                ", type=" + type +
+                ", subType=" + subType +
+                ", severity=" + severity +
+                ", created=" + created +
+                ", location=" + location +
+                ", address='" + address + '\'' +
+                ", locationAccuracy=" + locationAccuracy +
+                ", markerAddedToMap=" + markerAddedToMap +
+                '}';
     }
 
     public Accident setTitle(String title) {

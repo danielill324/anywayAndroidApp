@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <PreferenceCategory android:title="@string/pref_header_notification">
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:key="@string/colored_Map_key"
+            android:title="@string/colored_Map_key"
+            android:layout="@layout/custom_preference_widget_layout" />
 
+
+    </PreferenceCategory>
 </PreferenceScreen>
